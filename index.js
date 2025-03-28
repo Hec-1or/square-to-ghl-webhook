@@ -41,6 +41,30 @@ app.post("/square-webhook", async (req, res) => {
 let serviceName = "Unknown Service";
 const serviceVariationId = booking?.appointment_segments?.[0]?.service_variation_id;
 
+// 👤 Step 3: Look up staff (team member) name
+let staffName = "Unknown Staff";
+const teamMemberId = booking?.appointment_segments?.[0]?.team_member_id;
+
+if (teamMemberId) {
+  try {
+    const teamRes = await axios.get(
+      `https://connect.squareup.com/v2/team-members/${teamMemberId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    staffName = teamRes.data?.team_member?.display_name || "Unknown";
+    console.log("👤 Staff Name:", staffName);
+    logToFile("👤 STAFF NAME: " + staffName);
+  } catch (staffError) {
+    logToFile("⚠️ Failed to fetch staff name:\n" + JSON.stringify(staffError.response?.data || staffError.message, null, 2));
+  }
+}
+
 if (serviceVariationId) {
   try {
     const catalogRes = await axios.get(
