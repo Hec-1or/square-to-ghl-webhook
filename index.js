@@ -37,6 +37,29 @@ app.post("/square-webhook", async (req, res) => {
     let email = null;
     let phone = null;
     let name = "Unknown";
+    // 🔍 Step 2: Look up service name using Catalog API
+let serviceName = "Unknown Service";
+const serviceVariationId = booking?.appointment_segments?.[0]?.service_variation_id;
+
+if (serviceVariationId) {
+  try {
+    const catalogRes = await axios.get(
+      `https://connect.squareup.com/v2/catalog/object/${serviceVariationId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    serviceName = catalogRes.data?.object?.item_variation?.name || "Unknown";
+    console.log("🛍️ Service Name:", serviceName);
+    logToFile("🛍️ SERVICE NAME: " + serviceName);
+  } catch (catalogError) {
+    logToFile("⚠️ Failed to fetch service name: " + catalogError.message);
+  }
+}
 
     if (customerId) {
       const customerRes = await axios.get(
