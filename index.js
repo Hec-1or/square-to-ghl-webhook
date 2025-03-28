@@ -18,6 +18,23 @@ const GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6Ik
 
 // ✅ Middleware
 app.use("/square-webhook", express.json());
+app.use("/square-webhook", express.json());
+
+// ✅ OAUTH ROUTES START HERE 👇
+const querystring = require("querystring");
+
+app.get("/oauth/login", (req, res) => {
+  // ...
+});
+
+app.get("/oauth/callback", async (req, res) => {
+  // ...
+});
+// ✅ OAUTH ROUTES END HERE 👆
+
+app.post("/square-webhook", async (req, res) => {
+  // your webhook logic
+});
 
 // ✅ Webhook route
 app.post("/square-webhook", async (req, res) => {
