@@ -61,8 +61,8 @@ if (teamMemberId) {
     console.log("👤 Staff Name:", staffName);
     logToFile("👤 STAFF NAME: " + staffName);
   } catch (staffError) {
-    logToFile("⚠️ Failed to fetch staff name:\n" + JSON.stringify(staffError.response?.data || staffError.message, null, 2));
-  }
+    logToFile("⚠️ Staff Error:\n" + JSON.stringify(staffError.response?.data || staffError.message, null, 2));
+  }  
 }
 
 if (serviceVariationId) {
@@ -81,7 +81,7 @@ if (serviceVariationId) {
     console.log("🛍️ Service Name:", serviceName);
     logToFile("🛍️ SERVICE NAME: " + serviceName);
   } catch (catalogError) {
-    logToFile("⚠️ Failed to fetch service name: " + catalogError.message);
+    logToFile("⚠️ Catalog Error:\n" + JSON.stringify(catalogError.response?.data || catalogError.message, null, 2));
   }
 }
 
