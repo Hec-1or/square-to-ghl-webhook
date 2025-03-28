@@ -31,7 +31,23 @@ app.post("/square-webhook", async (req, res) => {
 
   console.log("📅 Event:", eventType);
   console.log("🆔 Customer ID:", customerId);
-
+// TEMP TEST: Check token permissions manually
+try {
+  const test = await axios.get(
+    'https://connect.squareup.com/v2/team-members/me',
+    {
+      headers: {
+        Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  console.log('✅ TEAM ACCESS TEST PASSED:', test.data);
+  logToFile('✅ TEAM ACCESS TEST PASSED:\n' + JSON.stringify(test.data, null, 2));
+} catch (err) {
+  console.log('❌ TEAM ACCESS TEST FAILED:', err.response?.data || err.message);
+  logToFile('❌ TEAM ACCESS TEST FAILED:\n' + JSON.stringify(err.response?.data || err.message, null, 2));
+}
   try {
     // 🔍 Step 1: Fetch customer info from Square
     let email = null;
