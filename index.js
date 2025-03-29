@@ -1,9 +1,7 @@
-// ✅ Dependencies
 const fs = require('fs');
 const express = require("express");
 const axios = require("axios");
 const path = require('path');
-const querystring = require("querystring");
 
 const app = express();
 const port = 3000;
@@ -17,61 +15,8 @@ function logToFile(content) {
 // ✅ Your API keys
 const SQUARE_ACCESS_TOKEN = "EAAAlzn7ojeRCtAp1T7d-lSeeJa_TcmepPsDEYY5d6D3rOVvoZpz5xSdH8wE8LEv";
 const GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6IkxDdGJ4MHlxWlY0NXpRcmhaZ3N3IiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzMTE0NjUzOTUyLCJzdWIiOiJzbVN1VWg1UHVZcmtjMkdUcUhjZSJ9.1ug1Yf0YOXvzVE60Wu2lVdqyKGC8dBtHWvZG6kEMwHk";
-const SQUARE_CLIENT_ID = "sq0idp-YnKPvNSmeGqBnnwAlL9m-g";
-const SQUARE_CLIENT_SECRET = "sq0csp-uE9FHpgU6z2xrLnQEWuURKqva7d4NZDZZWTgtHACRDA";
-const REDIRECT_URI = "https://square-to-ghl-webhook-production.up.railway.app/oauth/callback";
 
-// ✅ Middleware
 app.use("/square-webhook", express.json());
-
-// ✅ OAUTH ROUTES 👇
-app.get("/oauth/login", (req, res) => {
-  const scopes = [
-    "CUSTOMERS_READ",
-    "ITEMS_READ",
-    "TEAM_READ"
-  ].join("+");
-
-  const redirectUrl = `https://connect.squareup.com/oauth2/authorize?client_id=${SQUARE_CLIENT_ID}&scope=${scopes}&session=false&redirect_uri=${REDIRECT_URI}`;
-  res.redirect(redirectUrl);
-});
-
-app.get("/oauth/callback", async (req, res) => {
-  const { code } = req.query;
-
-  if (!code) {
-    return res.status(400).send("Authorization code missing");
-  }
-
-  try {
-    const response = await axios.post(
-      "https://connect.squareup.com/oauth2/token",
-      {
-        client_id: SQUARE_CLIENT_ID,
-        client_secret: SQUARE_CLIENT_SECRET,
-        code: code,
-        grant_type: "authorization_code",
-        redirect_uri: REDIRECT_URI
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    const accessToken = response.data.access_token;
-    const merchantId = response.data.merchant_id;
-
-    logToFile(`🟢 OAUTH SUCCESS:\nMerchant: ${merchantId}\nToken: ${accessToken}`);
-    res.send("✅ Authorized! Check your logs for the token.");
-  } catch (err) {
-    console.error("❌ OAuth Error:", err.response?.data || err.message);
-    logToFile("❌ OAuth Callback Error:\n" + JSON.stringify(err.response?.data || err.message, null, 2));
-    res.status(500).send("OAuth failed. Check logs.");
-  }
-});
-// ✅ OAUTH ROUTES END 👆
 
 // ✅ Webhook route
 app.post("/square-webhook", async (req, res) => {
@@ -82,6 +27,9 @@ app.post("/square-webhook", async (req, res) => {
   const eventType = req.body?.type || "unknown_event";
   const booking = req.body?.data?.object?.booking;
   const customerId = booking?.customer_id;
+
+  console.log("📅 Event:", eventType);
+  console.log("🆔 Customer ID:", customerId);
 
   try {
     let email = null;
@@ -152,16 +100,18 @@ app.post("/square-webhook", async (req, res) => {
     }
 
     if (email || phone) {
+      const tags = [eventType, serviceName, staffName].filter(Boolean).join(',');
       const contactPayload = {
         firstName: name || "Unknown",
         email,
         phone,
+        tags: [eventType, serviceName, staffName],
         customField: [
           { fieldKey: "event_type", value: eventType },
           { fieldKey: "service_name", value: serviceName },
           { fieldKey: "staff_name", value: staffName }
         ],
-      };
+      };      
 
       const ghlRes = await axios.post(
         "https://rest.gohighlevel.com/v1/contacts/",
