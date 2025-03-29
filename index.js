@@ -14,8 +14,8 @@ function logToFile(content) {
 }
 
 // ✅ Static API Keys
-const GHL_API_KEY = "your_ghl_api_key_here"; // Replace with your real GHL key
-const SQUARE_ACCESS_TOKEN = "your_square_access_token_here"; // Replace with actual Square token
+const GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6IkxDdGJ4MHlxWlY0NXpRcmhaZ3N3IiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzMTE0NjUzOTUyLCJzdWIiOiJzbVN1VWg1UHVZcmtjMkdUcUhjZSJ9.1ug1Yf0YOXvzVE60Wu2lVdqyKGC8dBtHWvZG6kEMwHk"; // Replace with your real GHL key
+const SQUARE_ACCESS_TOKEN = "EAAAlxkDRuXNvFfiJUDdqfcKuMv5ovNklo5WLcgw6OhA3GJw0ZTg3kS8sUya0QY-"; // Replace with actual Square token
 
 // ✅ Middleware to parse JSON
 app.use("/square-webhook", express.json());
