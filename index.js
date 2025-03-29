@@ -23,8 +23,10 @@ app.use("/square-webhook", express.json());
 const querystring = require("querystring");
 
 app.get("/oauth/login", (req, res) => {
-  const scopes = "CUSTOMERS_READ ITEMS_READ TEAM_READ";
+  const scopes = "CUSTOMERS_READ"; // 🧪 Testing with one valid scope first
+
   const redirectUrl = `https://connect.squareup.com/oauth2/authorize?client_id=sq0idp-YnKPvNSmeGqBnnwAlL9m-g&scope=${scopes}&session=false&redirect_uri=https://square-to-ghl-webhook-production.up.railway.app/oauth/callback`;
+
   res.redirect(redirectUrl);
 });
 
@@ -55,6 +57,8 @@ app.get("/oauth/callback", async (req, res) => {
     const merchantId = response.data.merchant_id;
 
     logToFile(`🟢 OAUTH SUCCESS:\nMerchant: ${merchantId}\nToken: ${accessToken}`);
+    console.log("🟢 Token granted:", accessToken);
+
     res.send("✅ Authorized! Check your logs for the token.");
   } catch (err) {
     console.error("❌ OAuth Error:", err.response?.data || err.message);
