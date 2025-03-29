@@ -13,14 +13,14 @@ function logToFile(content) {
   fs.appendFileSync("webhook_payloads.log", logEntry);
 }
 
-// ✅ Static API Keys
-const GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6IkxDdGJ4MHlxWlY0NXpRcmhaZ3N3IiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzMTE0NjUzOTUyLCJzdWIiOiJzbVN1VWg1UHVZcmtjMkdUcUhjZSJ9.1ug1Yf0YOXvzVE60Wu2lVdqyKGC8dBtHWvZG6kEMwHk"; // Replace with your real GHL key
-const SQUARE_ACCESS_TOKEN = "EAAAlxkDRuXNvFfiJUDdqfcKuMv5ovNklo5WLcgw6OhA3GJw0ZTg3kS8sUya0QY-"; // Replace with actual Square token
+// ✅ GHL & Square tokens
+const GHL_API_KEY = "yeyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6IkxDdGJ4MHlxWlY0NXpRcmhaZ3N3IiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzMTE0NjUzOTUyLCJzdWIiOiJzbVN1VWg1UHVZcmtjMkdUcUhjZSJ9.1ug1Yf0YOXvzVE60Wu2lVdqyKGC8dBtHWvZG6kEMwHkour_ghl_api_key_here";
+const SQUARE_ACCESS_TOKEN = "EAAAlxkDRuXNvFfiJUDdqfcKuMv5ovNklo5WLcgw6OhA3GJw0ZTg3kS8sUya0QY-";
 
-// ✅ Middleware to parse JSON
+// ✅ JSON parsing middleware
 app.use("/square-webhook", express.json());
 
-// ✅ Webhook route for Square
+// ✅ Square webhook handler
 app.post("/square-webhook", async (req, res) => {
   console.log("📨 Webhook Received");
   logToFile("📨 Webhook Body:\n" + JSON.stringify(req.body, null, 2));
@@ -31,106 +31,115 @@ app.post("/square-webhook", async (req, res) => {
   const serviceVariationId = booking?.appointment_segments?.[0]?.service_variation_id;
   const teamMemberId = booking?.appointment_segments?.[0]?.team_member_id;
 
-  // 🔄 Map Square Team Member IDs to tag names
-  const staffTagMap = {
-    "tiy6AkXcGwDKIqmTADFP": "staff_maria_ferrer",
-    "TMh40UFdwYtEA5IV": "staff_milay",
-    "TMz167qfamP3BQAf": "staff_thalia",
-    "i2o7OaHPSgrVvSIsV4RI": "staff_yamile"
-  };
-
+  let serviceName = "Unknown Service";
+  let staffName = "Unknown Staff";
   let email = null;
   let phone = null;
   let name = "Unknown";
-  let serviceName = "Unknown Service";
-  let staffTag = staffTagMap[teamMemberId] || "staff_unknown";
 
-  // 🔍 Step 1: Fetch Service Name (optional but useful)
+  // ✅ Fetch staff name from Square
+  if (teamMemberId) {
+    try {
+      const teamRes = await axios.get(`https://connect.squareup.com/v2/team-members/${teamMemberId}`, {
+        headers: {
+          Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      });
+      staffName = teamRes.data?.team_member?.display_name || "Unknown";
+      console.log("👤 Staff:", staffName);
+      logToFile("👤 Staff Name: " + staffName);
+    } catch (err) {
+      logToFile("⚠️ Staff Lookup Error:\n" + JSON.stringify(err.response?.data || err.message, null, 2));
+    }
+  }
+
+  // ✅ Fetch full service name (variation + item)
   if (serviceVariationId) {
     try {
-      const catalogRes = await axios.get(
-        `https://connect.squareup.com/v2/catalog/object/${serviceVariationId}`,
-        {
+      const variationRes = await axios.get(`https://connect.squareup.com/v2/catalog/object/${serviceVariationId}`, {
+        headers: {
+          Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const variation = variationRes.data?.object?.item_variation_data;
+      const variationName = variation?.name || "Unknown Variation";
+      const itemId = variation?.item_id;
+
+      if (itemId) {
+        const itemRes = await axios.get(`https://connect.squareup.com/v2/catalog/object/${itemId}`, {
           headers: {
             Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
-            "Content-Type": "application/json"
-          }
-        }
-      );
-      serviceName = catalogRes.data?.object?.item_variation?.name || "Unknown";
-      logToFile("🛍️ SERVICE NAME: " + serviceName);
-    } catch (catalogError) {
-      logToFile("⚠️ Catalog Error:\n" + JSON.stringify(catalogError.response?.data || catalogError.message, null, 2));
+            "Content-Type": "application/json",
+          },
+        });
+        const itemName = itemRes.data?.object?.item_data?.name || "Unknown Item";
+        serviceName = `${itemName} - ${variationName}`;
+      } else {
+        serviceName = variationName;
+      }
+
+      console.log("🛍️ Service:", serviceName);
+      logToFile("🛍️ Service Name: " + serviceName);
+    } catch (err) {
+      logToFile("⚠️ Service Lookup Error:\n" + JSON.stringify(err.response?.data || err.message, null, 2));
     }
   }
 
-  // 🔍 Step 2: Fetch customer info from Square
+  // ✅ Fetch customer
   if (customerId) {
     try {
-      const customerRes = await axios.get(
-        `https://connect.squareup.com/v2/customers/${customerId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
-            "Content-Type": "application/json"
-          }
-        }
-      );
-      const customer = customerRes.data.customer;
-      email = customer?.email_address || null;
-      phone = customer?.phone_number || null;
+      const customerRes = await axios.get(`https://connect.squareup.com/v2/customers/${customerId}`, {
+        headers: {
+          Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const customer = customerRes.data?.customer;
+      email = customer?.email_address;
+      phone = customer?.phone_number;
       name = `${customer?.given_name || ""} ${customer?.family_name || ""}`.trim();
-      logToFile("🙋 CUSTOMER:\n" + JSON.stringify({ name, email, phone }, null, 2));
-    } catch (customerErr) {
-      logToFile("⚠️ Customer Fetch Error:\n" + JSON.stringify(customerErr.response?.data || customerErr.message, null, 2));
+      logToFile("🙋 Customer:\n" + JSON.stringify({ name, email, phone }, null, 2));
+    } catch (err) {
+      logToFile("⚠️ Customer Lookup Error:\n" + JSON.stringify(err.response?.data || err.message, null, 2));
     }
   }
 
-  // ✅ Step 3: Push to GHL
+  // ✅ Send to GHL
   if (email || phone) {
     try {
-      const contactPayload = {
+      const payload = {
         firstName: name,
         email,
         phone,
-        tags: [eventType, serviceName, staffTag]
+        tags: [eventType, serviceName, staffName],
       };
-
-      const ghlRes = await axios.post(
-        "https://rest.gohighlevel.com/v1/contacts/",
-        contactPayload,
-        {
-          headers: {
-            Authorization: `Bearer ${GHL_API_KEY}`,
-            "Content-Type": "application/json"
-          }
-        }
-      );
-
-      const contactId = ghlRes.data.contact.id;
+      const ghlRes = await axios.post("https://rest.gohighlevel.com/v1/contacts/", payload, {
+        headers: {
+          Authorization: `Bearer ${GHL_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const contactId = ghlRes.data?.contact?.id;
       logToFile("✅ GHL Contact Created: " + contactId);
-    } catch (ghlErr) {
-      logToFile("❌ GHL Error:\n" + JSON.stringify(ghlErr.response?.data || ghlErr.message, null, 2));
+    } catch (err) {
+      logToFile("❌ GHL Error:\n" + JSON.stringify(err.response?.data || err.message, null, 2));
     }
   } else {
-    logToFile("⚠️ Skipped GHL creation. No email or phone");
+    logToFile("⚠️ No email or phone. Skipping GHL.");
   }
 
-  res.status(200).send("Webhook processed");
+  res.status(200).send("OK");
 });
 
-// ✅ Route to download logs
+// ✅ Log download
 app.get("/download-log", (req, res) => {
   const filePath = path.join(__dirname, "webhook_payloads.log");
-  res.download(filePath, "webhook_payloads.log", (err) => {
-    if (err) {
-      console.error("❌ Log download failed:", err);
-      res.status(500).send("Could not download log file");
-    }
-  });
+  res.download(filePath);
 });
 
 // ✅ Start server
 app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
+  console.log(`🚀 Listening on port ${port}`);
 });
