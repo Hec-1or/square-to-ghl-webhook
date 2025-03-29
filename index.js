@@ -31,15 +31,19 @@ app.use("/square-webhook", express.json());
 app.get("/oauth/login", (req, res) => {
   const scopes = [
     "CUSTOMERS_READ",
-    "ITEMS_READ",
-    "TEAM_READ",
-    "APPOINTMENTS_READ"
-  ].join("+");
+    "MERCHANT_PROFILE_READ",
+    "PAYMENTS_READ"
+  ].join(" "); // ✅ Use space as separator
+
+  const redirectUrl = `https://connect.squareup.com/oauth2/authorize?client_id=${SQUARE_CLIENT_ID}&scope=${encodeURIComponent(scopes)}&session=false&redirect_uri=${OAUTH_REDIRECT_URI}`;
+
+  res.redirect(redirectUrl);
+});
+
 
   const redirectUrl = `https://connect.squareup.com/oauth2/authorize?client_id=${SQUARE_CLIENT_ID}&scope=${scopes}&session=false&redirect_uri=${OAUTH_REDIRECT_URI}`;
 
   res.redirect(redirectUrl);
-});
 
 // ✅ OAuth Callback
 app.get("/oauth/callback", async (req, res) => {
