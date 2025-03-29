@@ -1,7 +1,9 @@
-const fs = require('fs');
+// ✅ Required modules
+const fs = require("fs");
 const express = require("express");
 const axios = require("axios");
-const path = require('path');
+const path = require("path");
+const querystring = require("querystring");
 
 const app = express();
 const port = 3000;
@@ -12,158 +14,90 @@ function logToFile(content) {
   fs.appendFileSync("webhook_payloads.log", logEntry);
 }
 
-// ✅ Your API keys
-const SQUARE_ACCESS_TOKEN = "EAAAlzn7ojeRCtAp1T7d-lSeeJa_TcmepPsDEYY5d6D3rOVvoZpz5xSdH8wE8LEv";
-const GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6IkxDdGJ4MHlxWlY0NXpRcmhaZ3N3IiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzMTE0NjUzOTUyLCJzdWIiOiJzbVN1VWg1UHVZcmtjMkdUcUhjZSJ9.1ug1Yf0YOXvzVE60Wu2lVdqyKGC8dBtHWvZG6kEMwHk";
+// ✅ GHL API key (static for now)
+const GHL_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6IkxDdGJ4MHlxWlY0NXpRcmhaZ3N3IiwidmVyc2lvbiI6MSwiaWF0IjoxNzQzMTE0NjUzOTUyLCJzdWIiOiJzbVN1VWg1UHVZcmtjMkdUcUhjZSJ9.1ug1Yf0YOXvzVE60Wu2lVdqyKGC8dBtHWvZG6kEMwHk"; // Replace this
 
+// ✅ OAuth credentials from Square
+const SQUARE_CLIENT_ID = "sq0idp-kEFwtcSD2DW4qjejf52yjA";
+const SQUARE_CLIENT_SECRET = "sq0csp-s9VwjrkZS50-Zpi7YhRYq-8iTxKdgMRkdmymfkdQHA4";
+const OAUTH_REDIRECT_URI = "https://square-to-ghl-webhook-production.up.railway.app/oauth/callback";
+
+let squareAccessToken = null; // Will be filled in after OAuth
+
+// ✅ Middleware to parse JSON
 app.use("/square-webhook", express.json());
 
-// ✅ Webhook route
-app.post("/square-webhook", async (req, res) => {
-  console.log("🧾 Payload received:");
-  const payload = JSON.stringify(req.body, null, 2);
-  logToFile("📦 PAYLOAD:\n" + payload);
+// ✅ OAuth Login
+app.get("/oauth/login", (req, res) => {
+  const scopes = [
+    "CUSTOMERS_READ",
+    "ITEMS_READ",
+    "TEAM_READ",
+    "APPOINTMENTS_READ"
+  ].join("+");
 
-  const eventType = req.body?.type || "unknown_event";
-  const booking = req.body?.data?.object?.booking;
-  const customerId = booking?.customer_id;
+  const redirectUrl = `https://connect.squareup.com/oauth2/authorize?client_id=${SQUARE_CLIENT_ID}&scope=${scopes}&session=false&redirect_uri=${OAUTH_REDIRECT_URI}`;
 
-  console.log("📅 Event:", eventType);
-  console.log("🆔 Customer ID:", customerId);
+  res.redirect(redirectUrl);
+});
+
+// ✅ OAuth Callback
+app.get("/oauth/callback", async (req, res) => {
+  const { code } = req.query;
+
+  if (!code) {
+    return res.status(400).send("Authorization code missing");
+  }
 
   try {
-    let email = null;
-    let phone = null;
-    let name = "Unknown";
-    let serviceName = "Unknown Service";
-    let staffName = "Unknown Staff";
-
-    const serviceVariationId = booking?.appointment_segments?.[0]?.service_variation_id;
-    const teamMemberId = booking?.appointment_segments?.[0]?.team_member_id;
-
-    if (teamMemberId) {
-      try {
-        const teamRes = await axios.get(
-          `https://connect.squareup.com/v2/team-members/${teamMemberId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-        staffName = teamRes.data?.team_member?.display_name || "Unknown";
-        console.log("👤 Staff Name:", staffName);
-        logToFile("👤 STAFF NAME: " + staffName);
-      } catch (staffError) {
-        logToFile("⚠️ Staff Error:\n" + JSON.stringify(staffError.response?.data || staffError.message, null, 2));
+    const tokenRes = await axios.post(
+      "https://connect.squareup.com/oauth2/token",
+      {
+        client_id: SQUARE_CLIENT_ID,
+        client_secret: SQUARE_CLIENT_SECRET,
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: OAUTH_REDIRECT_URI,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
       }
-    }
+    );
 
-    if (serviceVariationId) {
-      try {
-        const catalogRes = await axios.get(
-          `https://connect.squareup.com/v2/catalog/object/${serviceVariationId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-        serviceName = catalogRes.data?.object?.item_variation?.name || "Unknown";
-        console.log("🛍️ Service Name:", serviceName);
-        logToFile("🛍️ SERVICE NAME: " + serviceName);
-      } catch (catalogError) {
-        logToFile("⚠️ Catalog Error:\n" + JSON.stringify(catalogError.response?.data || catalogError.message, null, 2));
-      }
-    }
+    squareAccessToken = tokenRes.data.access_token;
+    const merchantId = tokenRes.data.merchant_id;
 
-    if (customerId) {
-      const customerRes = await axios.get(
-        `https://connect.squareup.com/v2/customers/${customerId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${SQUARE_ACCESS_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      const customer = customerRes.data.customer;
-      email = customer?.email_address || null;
-      phone = customer?.phone_number || null;
-      name = `${customer?.given_name || ""} ${customer?.family_name || ""}`.trim();
-
-      console.log("🙋 Customer Info:", { name, email, phone });
-      logToFile("🙋 CUSTOMER:\n" + JSON.stringify({ name, email, phone }, null, 2));
-    }
-
-    if (email || phone) {
-      const tags = [eventType, serviceName, staffName].filter(Boolean).join(',');
-      const contactPayload = {
-        firstName: name || "Unknown",
-        email,
-        phone,
-        tags: [eventType, serviceName, staffName],
-        customField: [
-          { fieldKey: "event_type", value: eventType },
-          { fieldKey: "service_name", value: serviceName },
-          { fieldKey: "staff_name", value: staffName }
-        ],
-      };      
-
-      const ghlRes = await axios.post(
-        "https://rest.gohighlevel.com/v1/contacts/",
-        contactPayload,
-        {
-          headers: {
-            Authorization: `Bearer ${GHL_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      const contactId = ghlRes.data.contact.id;
-      console.log("✅ Contact created in GHL:", contactId);
-      logToFile("✅ GHL Contact ID: " + contactId);
-    } else {
-      console.log("⚠️ No email or phone found. Skipping GHL creation.");
-      logToFile("⚠️ SKIPPED: Missing email/phone for customer ID: " + customerId);
-    }
-
-    res.status(200).send("Webhook processed");
-  } catch (error) {
-    const errMsg = error.response?.data
-      ? JSON.stringify(error.response.data, null, 2)
-      : error.message;
-
-    logToFile("❌ ERROR:\n" + errMsg);
-
-    console.error("❌ Webhook error:");
-    if (error.response) {
-      console.error("🔴 Status:", error.response.status);
-      console.error("🔴 Data:", error.response.data);
-    } else {
-      console.error("💥 Message:", error.message);
-    }
-
-    res.status(500).send("Something went wrong");
+    logToFile(`🟢 OAUTH SUCCESS:\nMerchant: ${merchantId}\nToken: ${squareAccessToken}`);
+    console.log("✅ Token received and saved");
+    res.send("✅ OAuth Success! Check your logs for the token.");
+  } catch (err) {
+    logToFile("❌ OAuth Callback Error:\n" + JSON.stringify(err.response?.data || err.message, null, 2));
+    console.error("❌ OAuth Error:", err.response?.data || err.message);
+    res.status(500).send("❌ OAuth failed. See logs.");
   }
 });
 
-// ✅ Log file download route
-app.get('/download-log', (req, res) => {
-  const filePath = path.join(__dirname, 'webhook_payloads.log');
-  res.download(filePath, 'webhook_payloads.log', (err) => {
+// ✅ Webhook listener (basic)
+app.post("/square-webhook", async (req, res) => {
+  console.log("📨 Webhook received");
+  logToFile("📨 Webhook Payload:\n" + JSON.stringify(req.body, null, 2));
+  res.status(200).send("Received");
+});
+
+// ✅ Download logs
+app.get("/download-log", (req, res) => {
+  const filePath = path.join(__dirname, "webhook_payloads.log");
+  res.download(filePath, "webhook_payloads.log", (err) => {
     if (err) {
-      console.error('❌ Download error:', err);
-      res.status(500).send('Could not download file');
+      console.error("❌ Log download failed:", err);
+      res.status(500).send("Could not download log file");
     }
   });
 });
 
 // ✅ Start server
 app.listen(port, () => {
-  console.log(`🚀 Server is listening on port ${port}`);
+  console.log(`🚀 Server running on port ${port}`);
 });
